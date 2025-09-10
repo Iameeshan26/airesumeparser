@@ -130,16 +130,48 @@
             }
         }
 
-        function showParsedOutput(data) {
+               function showParsedOutput(data) {
             latestParsedJson = data;
             parsedOutput.textContent = formatParsedDataForDisplay(data);
             outputHeading.textContent = "Extracted Information:";
             
             let score = 0;
-            if (data.personal_details && data.personal_details.name) score += 2.5;
-            if (data.work_experience && data.work_experience.length) score += 2.5;
-            if (data.education && data.education.length) score += 2.5;
-            if (data.skills && (data.skills.technical_skills?.length || data.skills.soft_skills?.length)) score += 2.5;
+            const technicalSkills = data.skills?.technical_skills || [];
+            const workExperience = data.work_experience || [];
+
+            // 1. Score based on Skills (Max 4 points)
+            // 1 point for every 4 technical skills, capped at 4.
+            let skillScore = Math.min(4, Math.floor(technicalSkills.length / 4));
+            score += skillScore;
+
+            // 2. Score based on Work Experience (Max 6 points)
+            let experienceScore = 0;
+            // Points from number of roles (up to 3 points)
+            experienceScore += Math.min(3, workExperience.length);
+
+            // Points from quality/detail of descriptions (up to 3 points)
+            let totalDescriptionLength = 0;
+            let actionVerbs = ['achieved', 'managed', 'led', 'developed', 'created', 'implemented', 'increased', 'improved', 'optimized', 'launched'];
+            let foundVerbsCount = 0;
+            
+            const allDescriptions = workExperience.map(exp => exp.description || '').join(' ').toLowerCase();
+            totalDescriptionLength = allDescriptions.length;
+
+            actionVerbs.forEach(verb => {
+                if (allDescriptions.includes(verb)) {
+                    foundVerbsCount++;
+                }
+            });
+
+            if (totalDescriptionLength > 50) experienceScore += 1;
+            if (totalDescriptionLength > 50) experienceScore += 1;
+            if (foundVerbsCount >= 3) experienceScore += 1;
+            
+            // Cap experience score at 6
+            experienceScore = Math.min(6, experienceScore);
+            score += experienceScore;
+
+            // Final score capped at 10
             score = Math.min(10, score);
             document.getElementById('resume-score').textContent = `Resume Score: ${score.toFixed(1)}/10`;
 
@@ -155,7 +187,6 @@
 
             parsedOutputContainer.classList.remove('hidden');
         }
-
         function hideParsedOutput() {
             parsedOutputContainer.classList.add('hidden');
             parsedOutput.textContent = '';

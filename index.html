@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Library for reading PDF files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <!-- Library for reading DOCX files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.18/mammoth.browser.min.js"></script>
+    <link rel="stylesheet" href="parserstyles.css">
+<!-- 
+    <style>
+        .main-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 600px;
+        }
+        .loading-spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #10B981; /* green-500 */
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style> -->
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="main-container">
+        <h1 class="text-3xl font-bold text-green-700 mb-6 text-center">AI Resume Parser</h1>
+        <p class="text-gray-600 mb-8 text-center">Upload a resume (.pdf, .docx, or .txt) to extract key information using AI.</p>
+
+        <div class="mb-6">
+            <label for="resume-file" class="block text-sm font-medium text-gray-700 mb-2">Upload Resume File</label>
+            <input type="file" id="resume-file" accept=".pdf,.docx,.txt" class="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-green-50 file:text-green-600
+                hover:file:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded-md"
+            />
+        </div>
+
+        <button id="parse-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md shadow-md
+            transition duration-300 ease-in-out transform hover:scale-105
+            focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 flex items-center justify-center"
+            disabled>
+            <span id="button-text">Parse Resume</span>
+            <div id="loading-spinner" class="loading-spinner ml-2 hidden"></div>
+        </button>
+
+        <div id="message-box" class="mt-6 p-3 rounded-md hidden"></div>
+
+        <div id="parsed-output-container" class="mt-8 hidden">
+            <h2 class="text-xl font-semibold text-green-700 mb-4" id="output-heading">Extracted Information:</h2>
+            <div id="resume-score" class="text-lg font-bold text-blue-700 mb-4"></div>
+            <div id="job-roles" class="text-base text-green-800 mb-4"></div>
+            <pre id="parsed-output" class="bg-gray-50 p-4 rounded-md text-sm text-gray-800 overflow-auto max-h-96 border border-gray-200"></pre>
+            <button id="download-json-button" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-md
+                transition duration-300 ease-in-out transform hover:scale-105
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center">
+                Download JSON
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const resumeFileInput = document.getElementById('resume-file');
+        const parseButton = document.getElementById('parse-button');
+        const buttonText = document.getElementById('button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const messageBox = document.getElementById('message-box');
+        const parsedOutputContainer = document.getElementById('parsed-output-container');
+        const outputHeading = document.getElementById('output-heading');
+        const parsedOutput = document.getElementById('parsed-output');
+        const downloadJsonButton = document.getElementById('download-json-button');
+
+        let latestParsedJson = null;
+
+        // Set the worker source for pdf.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
+        resumeFileInput.addEventListener('change', () => {
+            parseButton.disabled = !resumeFileInput.files.length;
+            hideMessageBox();
+            hideParsedOutput();
+            latestParsedJson = null;
+        });
+
+        parseButton.addEventListener('click', parseResume);
+        downloadJsonButton.addEventListener('click', downloadJson);
+
+        function showMessageBox(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.className = 'mt-6 p-3 rounded-md'; // Reset classes
+            messageBox.classList.remove('hidden');
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                messageBox.classList.add('bg-blue-100', 'text-blue-700');
+            }
+        }
+
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        function showLoading(isLoading) {
+            if (isLoading) {
+                buttonText.textContent = 'Parsing...';
+                loadingSpinner.classList.remove('hidden');
+                parseButton.disabled = true;
+                parseButton.classList.add('cursor-not-allowed', 'opacity-75');
+            } else {
+                buttonText.textContent = 'Parse Resume';
+                loadingSpinner.classList.add('hidden');
+                parseButton.disabled = !resumeFileInput.files.length;
+                parseButton.classList.remove('cursor-not-allowed', 'opacity-75');
+            }
+        }
+
+        function showParsedOutput(data) {
+            latestParsedJson = data;
+            parsedOutput.textContent = formatParsedDataForDisplay(data);
+            outputHeading.textContent = "Extracted Information:";
+            
+            let score = 0;
+            if (data.personal_details && data.personal_details.name) score += 2.5;
+            if (data.work_experience && data.work_experience.length) score += 2.5;
+            if (data.education && data.education.length) score += 2.5;
+            if (data.skills && (data.skills.technical_skills?.length || data.skills.soft_skills?.length)) score += 2.5;
+            score = Math.min(10, score);
+            document.getElementById('resume-score').textContent = `Resume Score: ${score.toFixed(1)}/10`;
+
+            let roles = [];
+            const skills = (data.skills?.technical_skills || []).map(s => s.toLowerCase());
+            if (skills.some(s => s.includes('python') || s.includes('machine learning') || s.includes('ai'))) roles.push('AI/ML Engineer');
+            if (skills.some(s => s.includes('javascript') || s.includes('react') || s.includes('node'))) roles.push('Web Developer');
+            if (skills.some(s => s.includes('data analysis') || s.includes('pandas') || s.includes('numpy'))) roles.push('Data Analyst');
+            if (skills.some(s => s.includes('java') || s.includes('c++') || s.includes('c'))) roles.push('Software Developer');
+            if (skills.some(s => s.includes('git') || s.includes('github') || s.includes('devops'))) roles.push('DevOps Engineer');
+            if (roles.length === 0 && skills.length) roles.push('General IT Professional');
+            document.getElementById('job-roles').textContent = roles.length ? `Suggested Job Roles: ${roles.join(', ')}` : '';
+
+            parsedOutputContainer.classList.remove('hidden');
+        }
+
+        function hideParsedOutput() {
+            parsedOutputContainer.classList.add('hidden');
+            parsedOutput.textContent = '';
+            latestParsedJson = null;
+        }
+
+        function formatParsedDataForDisplay(data) {
+            let formattedText = [];
+            if (data.personal_details && data.personal_details.name) {
+                formattedText.push('--- Personal Details ---');
+                if (data.personal_details.name) formattedText.push(`Name: ${data.personal_details.name}`);
+                if (data.personal_details.email) formattedText.push(`Email: ${data.personal_details.email}`);
+                if (data.personal_details.phone_number) formattedText.push(`Phone: ${data.personal_details.phone_number}`);
+                formattedText.push('');
+            }
+            if (data.summary) {
+                formattedText.push('--- Summary ---');
+                formattedText.push(data.summary);
+                formattedText.push('');
+            }
+            if (data.work_experience && data.work_experience.length > 0) {
+                formattedText.push('--- Work Experience ---');
+                data.work_experience.forEach(exp => {
+                    formattedText.push(`- ${exp.job_title || 'N/A'} at ${exp.company_name || 'N/A'}`);
+                    formattedText.push(`  Dates: ${exp.start_date || 'N/A'} - ${exp.end_date || 'N/A'}`);
+                    if (exp.description) {
+                        formattedText.push(`  Description:\n    ${exp.description.replace(/\n/g, '\n    ')}`);
+                    }
+                    formattedText.push('');
+                });
+            }
+            if (data.education && data.education.length > 0) {
+                formattedText.push('--- Education ---');
+                data.education.forEach(edu => {
+                    formattedText.push(`- ${edu.degree || 'N/A'} from ${edu.institution || 'N/A'}`);
+                    if (edu.graduation_date) formattedText.push(`  Graduation: ${edu.graduation_date}`);
+                    formattedText.push('');
+                });
+            }
+            if (data.skills) {
+                const skillCategories = [];
+                if (data.skills.technical_skills?.length > 0) skillCategories.push(`Technical: ${data.skills.technical_skills.join(', ')}`);
+                if (data.skills.soft_skills?.length > 0) skillCategories.push(`Soft Skills: ${data.skills.soft_skills.join(', ')}`);
+                if (data.skills.certifications?.length > 0) skillCategories.push(`Certifications: ${data.skills.certifications.join(', ')}`);
+                if (skillCategories.length > 0) {
+                    formattedText.push('--- Skills ---');
+                    formattedText.push(...skillCategories);
+                    formattedText.push('');
+                }
+            }
+            return formattedText.join('\n');
+        }
+
+        function downloadJson() {
+            if (!latestParsedJson) {
+                showMessageBox('No parsed data available to download.', 'error');
+                return;
+            }
+            const jsonContent = JSON.stringify(latestParsedJson, null, 2);
+            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'parsed_resume.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        async function extractTextFromFile(file) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            const reader = new FileReader();
+
+            return new Promise((resolve, reject) => {
+                reader.onload = async (event) => {
+                    try {
+                        if (extension === 'pdf') {
+                            const pdf = await pdfjsLib.getDocument({ data: event.target.result }).promise;
+                            let textContent = '';
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const text = await page.getTextContent();
+                                textContent += text.items.map(s => s.str).join(' ') + '\n';
+                            }
+                            resolve(textContent);
+                        } else if (extension === 'docx') {
+                            const result = await mammoth.extractRawText({ arrayBuffer: event.target.result });
+                            resolve(result.value);
+                        } else if (extension === 'txt') {
+                             // For .txt, read as text directly
+                            const textReader = new FileReader();
+                            textReader.onload = (e) => resolve(e.target.result);
+                            textReader.onerror = (e) => reject(e);
+                            textReader.readAsText(file);
+                        } else {
+                            reject(new Error('Unsupported file type.'));
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = (event) => {
+                    reject(new Error('File could not be read.'));
+                };
+                
+                // Read as ArrayBuffer for PDF/DOCX, but handle TXT separately inside onload
+                if (extension === 'pdf' || extension === 'docx') {
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    reader.readAsText(file); // For .txt
+                }
+            });
+        }
+
+
+        async function parseResume() {
+            hideMessageBox();
+            hideParsedOutput();
+            const file = resumeFileInput.files[0];
+            if (!file) {
+                showMessageBox('Please select a resume file.', 'error');
+                return;
+            }
+
+            showLoading(true);
+
+            let resumeText = '';
+            try {
+                resumeText = await extractTextFromFile(file);
+            } catch (error) {
+                showMessageBox(`Error reading file: ${error.message}. Please try a different file.`, 'error');
+                showLoading(false);
+                return;
+            }
+
+            if (!resumeText.trim()) {
+                showMessageBox('Could not extract any text from the file. It might be empty, corrupted, or an image-based file.', 'error');
+                showLoading(false);
+                return;
+            }
+
+            const responseSchema = {
+                type: "OBJECT", properties: {
+                    "personal_details": { type: "OBJECT", properties: { "name": { "type": "STRING" }, "email": { "type": "STRING" }, "phone_number": { "type": "STRING" } } },
+                    "work_experience": { type: "ARRAY", items: { type: "OBJECT", properties: { "job_title": { "type": "STRING" }, "company_name": { "type": "STRING" }, "start_date": { "type": "STRING" }, "end_date": { "type": "STRING" }, "description": { "type": "STRING" } } } },
+                    "education": { type: "ARRAY", items: { type: "OBJECT", properties: { "degree": { "type": "STRING" }, "institution": { "type": "STRING" }, "graduation_date": { "type": "STRING" } } } },
+                    "skills": { type: "OBJECT", properties: { "technical_skills": { "type": "ARRAY", "items": { "type": "STRING" } }, "soft_skills": { "type": "ARRAY", "items": { "type": "STRING" } }, "certifications": { "type": "ARRAY", "items": { "type": "STRING" } } } },
+                    "summary": { "type": "STRING" }
+                }
+            };
+
+            const prompt = `You are an expert resume parser. Extract the following information from the resume text provided below and return it in the specified JSON format. If a field is not found, provide an empty string for single values or an empty array for lists. For dates, format them as "MMM YYYY". Combine bullet points in job descriptions into a single string with newline separators.\n\nResume Text:\n${resumeText}`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: "application/json", responseSchema: responseSchema }
+            };
+            
+            const apiKey = "AIzaSyDhShtG91Kx4Ia351Kshly-r6FezPcCQWI"; // Canvas provides this at runtime
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const maxRetries = 3;
+            const baseDelay = 1000;
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(`API error: ${response.status} - ${errorData.error.message || response.statusText}`);
+                    }
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        const jsonString = result.candidates[0].content.parts[0].text;
+                        const parsedJson = JSON.parse(jsonString);
+                        showParsedOutput(parsedJson);
+                        showMessageBox('Resume parsed successfully!', 'success');
+                        break; 
+                    } else {
+                        throw new Error('Unexpected API response structure.');
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    if (i < maxRetries - 1) {
+                        const delay = baseDelay * Math.pow(2, i);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        showMessageBox(`Failed to parse resume after ${maxRetries} attempts: ${error.message}. Please check the console for details.`, 'error');
+                    }
+                }
+            }
+            showLoading(false);
+        }
+    </script>
+</body>
+</html>

@@ -67,25 +67,17 @@ The resume score (0-10) is calculated based on:
 └── README.md          # This file
 ```
 
-## Demo Video
+## Demo Screenshot
 
-[Add your demo video here - you can embed a video by uploading it to a platform like YouTube, Vimeo, or GitHub releases, and then embed it using an iframe below]
+Below is a screenshot showing the AI Resume Parser in action:
 
-### Video Placeholder:
+![AI Resume Parser Demo](./demo-screenshot.png)
 
-```html
-<iframe
-  width="560"
-  height="315"
-  src="YOUR_VIDEO_URL"
-  title="AI Resume Parser Demo"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-  allowfullscreen
-></iframe>
-```
+_Replace `./demo-screenshot.png` with the path to your demo image. You can add a screenshot by:_
 
-Or visit the demo at: [Add your video link here]
+- _Taking a screenshot of the parser interface_
+- _Saving it as `demo-screenshot.jpg` in the project root_
+- _Or uploading it to the repository and updating the path accordingly_
 
 ## Requirements
 

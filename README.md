@@ -73,11 +73,6 @@ Below is a screenshot showing the AI Resume Parser in action:
 
 ![AI Resume Parser Demo](./demo-screenshot.png)
 
-_Replace `./demo-screenshot.png` with the path to your demo image. You can add a screenshot by:_
-
-- _Taking a screenshot of the parser interface_
-- _Saving it as `demo-screenshot.jpg` in the project root_
-- _Or uploading it to the repository and updating the path accordingly_
 
 ## Requirements
 

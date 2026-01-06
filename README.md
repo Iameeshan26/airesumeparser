@@ -67,12 +67,17 @@ The resume score (0-10) is calculated based on:
 └── README.md          # This file
 ```
 
-## Demo Screenshot
+## Demo Screenshots
 
-Below is a screenshot showing the AI Resume Parser in action:
+Below are screenshots showing the AI Resume Parser in action:
 
-![AI Resume Parser Demo](./demo-screenshot.png)
+### Screenshot 1 - Upload Interface
 
+![AI Resume Parser Upload Interface](./demo-screenshot-1.png)
+
+### Screenshot 2 - Parsed Results
+
+![AI Resume Parser Results](./demo-screenshot-2.png)
 
 ## Requirements
 
